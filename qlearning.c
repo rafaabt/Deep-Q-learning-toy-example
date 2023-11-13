@@ -137,7 +137,7 @@ uint32_t get_optimal_route (State_t *route, State_t start_location, State_t end_
 
     printf ("Best route from L%d to L%d: ", start_location+1, end_location+1);
 
-    while (next_location != end_location && k < MAX_HOPS) // Percorre tabela Q até chegar no destino
+    while (next_location != end_location && k < MAX_HOPS) 
     {
         next_location = get_max_action(start_location);
         route[k++] = next_location;
@@ -189,12 +189,8 @@ void train_q(State_t end_location) // Explore
         bzero (playable_actions, sizeof(uint8_t)*MAX_ACTIONS);
 
         for (uint32_t j = 0; j < MAX_ACTIONS; j++)
-        {
             if (rewards_new[current_state][j] > 0)
-            {
                 playable_actions[k++] = j; // takes all possible actions for current_state
-            }
-        }
 
      /* Explore: takes a random action, evaluates the result without previous knowledge ("off police") */
 
@@ -208,7 +204,7 @@ void train_q(State_t end_location) // Explore
         Q[current_state][rd_act] =  ann_out[0]*100000.0;
 
     #else // No ANN used (the same case as the blog)
-        Action_t max_act = get_max_action(next_state); // max_act é a melhor ação possível no estado next_state
+        Action_t max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
         float td = rewards_new[current_state][rd_act] + gamma * (Q[next_state][max_act] - Q[current_state][rd_act]);
         Q[current_state][rd_act] += alpha*td;   // state-action value function
     #endif
