@@ -9,7 +9,7 @@
 
 
 //#define LOG_ANN_DATA  // Logs exploration data to train the ANN
-//#define USE_ANN       // Uses a simple ANN to compute the Q values for each action in a given state
+#define USE_ANN       // Uses a simple ANN to compute the Q values for each action in a given state
 
 #ifdef USE_ANN
     #include "fann.h"
@@ -19,8 +19,10 @@
 #define MAX_ACTIONS 9
 #define MAX_HOPS    9
 
-#define gamma  0.75
-#define alpha  0.9
+#define gamma   0.75 // discount factor
+#define alpha   0.9  // learning rate
+#define epsilon 0.01 // prob. of taking random action (e-greedy tests)
+
 
 typedef unsigned char     uint8_t;
 typedef unsigned int      uint32_t;
@@ -97,6 +99,18 @@ const float rewards[MAX_STATES][MAX_ACTIONS] =
 
 float rewards_new[MAX_STATES][MAX_STATES];
 
+
+int tryEvent (float prob)
+{
+	if (prob == 0)
+		return 0;
+	
+	float probPercent = 100*prob;
+	
+	float p = rand()%101; // 0-100
+	
+	return p <= probPercent;
+}
 
 void print_Q ()
 {
@@ -204,7 +218,14 @@ void train_q(State_t end_location) // Explore
         Q[current_state][rd_act] =  ann_out[0]*100000.0;
 
     #else // No ANN used (the same case as the blog)
-        Action_t max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
+		
+		Action_t max_act;
+		
+		if(tryEvent(epsilon))  // (E-greedy) takes a random action with probability epsilon
+			max_act =  playable_actions[rand()%k];
+		else
+			max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
+		
         float td = rewards_new[current_state][rd_act] + gamma * (Q[next_state][max_act] - Q[current_state][rd_act]);
         Q[current_state][rd_act] += alpha*td;   // state-action value function
     #endif
@@ -251,3 +272,4 @@ int main (int argc, char **argv)
 
     return 0;
 }
+
