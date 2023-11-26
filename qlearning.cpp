@@ -84,7 +84,7 @@ typedef enum
 */
 
 
-const float rewards[MAX_STATES][MAX_ACTIONS] =
+const float rewards[MAX_STATES][MAX_ACTIONS] = // this defines playable actions for each state
 {
     {0,1,0,0,0,0,0,0,0},
     {1,0,1,0,1,0,0,0,0},
@@ -180,35 +180,30 @@ void train_q(State_t end_location) // Explore
         State_t next_state = rd_act;
 
     #ifdef USE_ANN  // If we want to use the ANN to estimate each of the Q[current_state][rd_act]
-      	annInputs.clear();
-		annInputs.push_back((float)current_state/10.0);
+        annInputs.clear();
+        annInputs.push_back((float)current_state/10.0);
         annInputs.push_back((float)rd_act/10.0);
-		annInf.run (annInputs);
-		Q[current_state][rd_act] = annInf.getOutput(0)*100000.0;
+        annInf.run (annInputs);
+        Q[current_state][rd_act] = annInf.getOutput(0)*100000.0;
 
     #else // No ANN used (the same case as the blog)
 		
-		Action_t max_act;
-		
-		if(tryEvent(epsilon))  // (E-greedy) takes a random action with probability epsilon
-			max_act =  playable_actions[rand()%k];
-		else
-			max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
+        Action_t max_act;
 
-		
-		/* temporal difference - td: Eq. (19.15) in the book is as follows */
-		
-		float td = rewards_new[current_state][rd_act] + gamma * Q[next_state][max_act] - Q[current_state][rd_act]; 
+        if(tryEvent(epsilon))  // (E-greedy) takes a random action with probability epsilon
+            max_act =  playable_actions[rand()%k];
+        else
+            max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
+
+        /* temporal difference - td: Eq. (19.15) in the book is as follows */
+
+        float td = rewards_new[current_state][rd_act] + gamma * Q[next_state][max_act] - Q[current_state][rd_act]; 
         Q[current_state][rd_act] += alpha*td;   // state-action value function
     #endif
 
     #ifdef LOG_ANN_DATA // Logs the data used to train the ANN
+        /* TODO: the ANN could also take as input the current state, and output Q for each possilbe action taken from current_state  */
         fprintf(f, "%.1f %.1f\n%.10f\n", (float)current_state/10.0, (float)rd_act/10.0, Q[current_state][rd_act]/100000.0);
-		
-		/*
-			TODO: the ANN could also take as input the current state, and output Q for each possilbe action taken from current_state 
-		
-		*/
     #endif
     }
 
@@ -220,12 +215,12 @@ void train_q(State_t end_location) // Explore
 
 int tryEvent (float prob)
 {
-	if (prob == 0.0)
-		return 0;
-	
-	float p = rand()%101; // 0-100
-	
-	return p <= 100*prob;
+    if (prob == 0.0)
+        return 0;
+
+    float p = rand()%101; // 0-100
+
+    return p <= 100*prob;
 }
 
 
