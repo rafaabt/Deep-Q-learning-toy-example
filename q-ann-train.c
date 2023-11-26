@@ -25,9 +25,9 @@ int main(int argc, char **argv)
     const unsigned int num_input  = 2;  // state and action
     const unsigned int num_output = 1;  // state-action 'Q' value
     const unsigned int num_layers = 3;
-    const unsigned int num_neurons_hidden = 8;
-    const float desired_error = (const float) 0.001;
-    const unsigned int max_epochs = 50000;
+    const unsigned int num_neurons_hidden = 4;
+    const float desired_error = (const float) 0.0001;
+    const unsigned int max_epochs = 20000;
     const unsigned int epochs_between_reports = 1000;
 
     struct fann *ann = fann_create_standard(num_layers, num_input, num_neurons_hidden, num_output);

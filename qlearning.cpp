@@ -1,6 +1,9 @@
-#include <stdio.h>
+#include <iostream>
+#include <cstdio>
 #include <stdlib.h>
 #include <string.h>
+#include <ctime>
+#include "fann-wrapper.h"
 
 
 
@@ -11,9 +14,7 @@
 //#define LOG_ANN_DATA  // Logs exploration data to train the ANN
 #define USE_ANN       // Uses a simple ANN to compute the Q values for each action in a given state
 
-#ifdef USE_ANN
-    #include "fann.h"
-#endif
+
 
 #define MAX_STATES  9
 #define MAX_ACTIONS 9
@@ -21,14 +22,14 @@
 
 #define gamma   0.75 // discount factor
 #define alpha   0.9  // learning rate
-#define epsilon 0.01 // prob. of taking random action (e-greedy tests)
+#define epsilon 0.1 // prob. of taking random action (e-greedy tests)
 
 
-typedef unsigned char     uint8_t;
-typedef unsigned int      uint32_t;
-typedef unsigned long int uint64_t;
-typedef uint8_t           State_t;
-typedef uint8_t           Action_t;
+using namespace std;
+
+
+typedef uint8_t State_t;
+typedef uint8_t Action_t;
 
 float Q[MAX_STATES][MAX_ACTIONS];
 
@@ -99,18 +100,134 @@ const float rewards[MAX_STATES][MAX_ACTIONS] =
 
 float rewards_new[MAX_STATES][MAX_STATES];
 
+void train_q(State_t end_location); // Explore
+uint32_t get_optimal_route (State_t *route, State_t start_location, State_t end_location); // Exploit
+Action_t get_max_action (State_t s); // Returns the best action for the state s
+int tryEvent (float prob);
+void print_Q ();
+
+
+int main (int argc, char **argv)
+{
+    State_t route[MAX_HOPS];
+    bzero (route, sizeof(State_t)*MAX_HOPS);
+    uint32_t totalLocs;
+	srand(time(NULL));
+
+    /* Train to go to position L1 starting frorm any random position */
+    train_q (L1);
+
+    printf ("\nTrained Q to L1:\n");
+    print_Q();
+    printf ("\n");
+ 
+    totalLocs = get_optimal_route(route, L2, L1);
+    totalLocs = get_optimal_route(route, L3, L1);   
+    totalLocs = get_optimal_route(route, L4, L1);
+    totalLocs = get_optimal_route(route, L5, L1);
+    totalLocs = get_optimal_route(route, L7, L1);
+
+    totalLocs = get_optimal_route(route, L6, L1);  
+    totalLocs = get_optimal_route(route, L8, L1);
+    totalLocs = get_optimal_route(route, L9, L1);   
+
+    totalLocs = get_optimal_route(route, L8, L1);
+    totalLocs = get_optimal_route(route, L7, L1);
+    totalLocs = get_optimal_route(route, L6, L1);
+    totalLocs = get_optimal_route(route, L1, L1);
+
+    return 0;
+}
+
+
+void train_q(State_t end_location) // Explore
+{
+    bzero (Q, sizeof(float)*MAX_STATES*MAX_ACTIONS);
+
+    State_t ending_state = end_location;
+
+    memcpy (rewards_new, rewards, sizeof(float)*MAX_STATES*MAX_STATES);
+    rewards_new[ending_state][ending_state] = 999;
+
+    Action_t playable_actions[MAX_ACTIONS];
+
+    const uint32_t samples = 1000;
+
+#ifdef LOG_ANN_DATA
+    FILE *f = fopen ("q-learn-data.txt", "w");
+    fprintf(f, "%d 2 1\n", samples);
+#endif
+
+#ifdef USE_ANN
+	FannInfer annInf ("q-learn.net", 2, 1);  // two inputs/one output
+	vector<fann_type> annInputs(2);
+#endif
+
+    for (uint32_t i = 0 ; i < samples; i++) // Traning phase
+    {
+        State_t current_state = rand()%MAX_STATES;
+        uint32_t k = 0;
+    
+        bzero (playable_actions, sizeof(uint8_t)*MAX_ACTIONS);
+
+        for (uint32_t j = 0; j < MAX_ACTIONS; j++)
+            if (rewards_new[current_state][j] > 0)
+                playable_actions[k++] = j; // takes all possible actions for current_state
+
+     /* Explore: takes a random action, evaluates the result without previous knowledge ("off police") */
+
+        Action_t rd_act    = playable_actions[rand()%k]; 
+        State_t next_state = rd_act;
+
+    #ifdef USE_ANN  // If we want to use the ANN to estimate each of the Q[current_state][rd_act]
+      	annInputs.clear();
+		annInputs.push_back((float)current_state/10.0);
+        annInputs.push_back((float)rd_act/10.0);
+		annInf.run (annInputs);
+		Q[current_state][rd_act] = annInf.getOutput(0)*100000.0;
+
+    #else // No ANN used (the same case as the blog)
+		
+		Action_t max_act;
+		
+		if(tryEvent(epsilon))  // (E-greedy) takes a random action with probability epsilon
+			max_act =  playable_actions[rand()%k];
+		else
+			max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
+
+		
+		/* temporal difference - td: Eq. (19.15) in the book is as follows */
+		
+		float td = rewards_new[current_state][rd_act] + gamma * Q[next_state][max_act] - Q[current_state][rd_act]; 
+        Q[current_state][rd_act] += alpha*td;   // state-action value function
+    #endif
+
+    #ifdef LOG_ANN_DATA // Logs the data used to train the ANN
+        fprintf(f, "%.1f %.1f\n%.10f\n", (float)current_state/10.0, (float)rd_act/10.0, Q[current_state][rd_act]/100000.0);
+		
+		/*
+			TODO: the ANN could also take as input the current state, and output Q for each possilbe action taken from current_state 
+		
+		*/
+    #endif
+    }
+
+    #ifdef LOG_ANN_DATA
+        fclose (f);
+    #endif
+}
+
 
 int tryEvent (float prob)
 {
-	if (prob == 0)
+	if (prob == 0.0)
 		return 0;
-	
-	float probPercent = 100*prob;
 	
 	float p = rand()%101; // 0-100
 	
-	return p <= probPercent;
+	return p <= 100*prob;
 }
+
 
 void print_Q ()
 {
@@ -169,107 +286,5 @@ uint32_t get_optimal_route (State_t *route, State_t start_location, State_t end_
     printf ("\n");
 
     return k;
-}
-
-void train_q(State_t end_location) // Explore
-{
-    bzero (Q, sizeof(float)*MAX_STATES*MAX_ACTIONS);
-
-    State_t ending_state = end_location;
-
-    memcpy (rewards_new, rewards, sizeof(float)*MAX_STATES*MAX_STATES);
-    rewards_new[ending_state][ending_state] = 999;
-
-    Action_t playable_actions[MAX_ACTIONS];
-
-    const uint32_t samples = 1000;
-
-#ifdef LOG_ANN_DATA
-    FILE *f = fopen ("q-learn-data.txt", "w");
-    fprintf(f, "%d 2 1\n", samples);
-#endif
-
-#ifdef USE_ANN
-  fann_type *ann_out;
-  struct fann *ann = fann_create_from_file("q-learn.net");
-  fann_type ann_input[2];
-#endif
-
-    for (uint32_t i = 0 ; i < samples; i++) // Traning phase
-    {
-        State_t current_state = rand()%MAX_STATES;
-        uint32_t k = 0;
-    
-        bzero (playable_actions, sizeof(uint8_t)*MAX_ACTIONS);
-
-        for (uint32_t j = 0; j < MAX_ACTIONS; j++)
-            if (rewards_new[current_state][j] > 0)
-                playable_actions[k++] = j; // takes all possible actions for current_state
-
-     /* Explore: takes a random action, evaluates the result without previous knowledge ("off police") */
-
-        Action_t rd_act = playable_actions[rand()%k]; 
-        State_t next_state = rd_act;
-
-    #ifdef USE_ANN  // If we want to use the ANN to estimate each of the Q[current_state][rd_act]
-        ann_input[0] = (float)current_state/10.0;
-        ann_input[1] = (float)rd_act/10.0; 
-        ann_out = fann_run(ann, ann_input);
-        Q[current_state][rd_act] =  ann_out[0]*100000.0;
-
-    #else // No ANN used (the same case as the blog)
-		
-		Action_t max_act;
-		
-		if(tryEvent(epsilon))  // (E-greedy) takes a random action with probability epsilon
-			max_act =  playable_actions[rand()%k];
-		else
-			max_act = get_max_action(next_state); // max_act is the best possible action in state next_state
-		
-        float td = rewards_new[current_state][rd_act] + gamma * (Q[next_state][max_act] - Q[current_state][rd_act]);
-        Q[current_state][rd_act] += alpha*td;   // state-action value function
-    #endif
-
-    #ifdef LOG_ANN_DATA // Logs the data used to train the ANN
-        fprintf(f, "%.1f %.1f\n%.10f\n", (float)current_state/10.0, (float)rd_act/10.0, Q[current_state][rd_act]/100000.0);
-    #endif
-    }
-
-    #ifdef LOG_ANN_DATA
-        fclose (f);
-    #endif
-}
-
-
-
-int main (int argc, char **argv)
-{
-    State_t route[MAX_HOPS];
-    bzero (route, sizeof(State_t)*MAX_HOPS);
-    uint32_t totalLocs;
-
-    /* Train to go to position L1 starting frorm any random position */
-    train_q (L1);
-
-    printf ("\nTrained Q to L1:\n");
-    print_Q();
-    printf ("\n");
- 
-    totalLocs = get_optimal_route(route, L2, L1);
-    totalLocs = get_optimal_route(route, L3, L1);   
-    totalLocs = get_optimal_route(route, L4, L1);
-    totalLocs = get_optimal_route(route, L5, L1);
-    totalLocs = get_optimal_route(route, L7, L1);
-
-    totalLocs = get_optimal_route(route, L6, L1);  
-    totalLocs = get_optimal_route(route, L8, L1);
-    totalLocs = get_optimal_route(route, L9, L1);   
-
-    totalLocs = get_optimal_route(route, L8, L1);
-    totalLocs = get_optimal_route(route, L7, L1);
-    totalLocs = get_optimal_route(route, L6, L1);
-    totalLocs = get_optimal_route(route, L1, L1);
-
-    return 0;
 }
 
